@@ -1,6 +1,6 @@
 import { FC, useEffect, useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
-import { Connection } from "@solana/web3.js";
+import { Connection, PublicKey, TransactionInstruction } from "@solana/web3.js";
 import { useNetworkConfiguration } from "contexts/NetworkConfigurationProvider";
 import {
     percentAmount,
@@ -12,7 +12,10 @@ import {
 import {
     TokenStandard,
     createAndMint,
+    fetchMetadataFromSeeds,
     mplTokenMetadata,
+    programmableConfig,
+    updateAsUpdateAuthorityV2,
 } from "@metaplex-foundation/mpl-token-metadata";
 import { walletAdapterIdentity } from "@metaplex-foundation/umi-signer-wallet-adapters";
 import { createUmi } from "@metaplex-foundation/umi-bundle-defaults";
@@ -22,6 +25,12 @@ import { AuthorityType, setAuthority } from "@metaplex-foundation/mpl-toolbox";
 import { getConnection } from "utils/getConnection";
 import { notify } from "utils/notifications";
 import { PinataSDK } from "pinata-web3";
+import { min } from "date-fns";
+// import { PRO} from "@metaplex-foundation/mpl-token-metadata";
+
+export const METADATA_PROGRAM_ID = new PublicKey(
+    "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
+);
 
 export const CreateView: FC = ({}) => {
     const wallet = useWallet();
@@ -43,7 +52,7 @@ export const CreateView: FC = ({}) => {
     const [metadataURL, setMetadataURL] = useState<string>("");
     const [isChecked, setIsChecked] = useState<boolean>(false);
     const [disableMintIsChecked, setDisableMintIsChecked] =
-        useState<boolean>(false);
+        useState<boolean>(true);
     const [metadataMethod, setMetadataMethod] = useState<string>("url");
     const [tokenDescription, setTokenDescription] = useState<string>("");
     const [file, setFile] = useState<GenericFile>();
@@ -62,20 +71,6 @@ export const CreateView: FC = ({}) => {
         try {
             setIscreating(true);
             const umi = createUmi(connection);
-
-            if (networkSelected == "devnet") {
-                umi.use(
-                    irysUploader({
-                        address: "https://devnet.irys.xyz",
-                    })
-                );
-            } else {
-                umi.use(
-                    irysUploader({
-                        address: "https://node1.irys.xyz/",
-                    })
-                );
-            }
 
             umi.use(mplTokenMetadata()).use(walletAdapterIdentity(wallet));
 
@@ -112,12 +107,20 @@ export const CreateView: FC = ({}) => {
                             "https://gateway.pinata.cloud/ipfs/" +
                             upload.IpfsHash.toString();
 
-                        const metadata = await pinata.upload.json({
-                            name: tokenName,
-                            symbol: symbol,
-                            description: tokenDescription,
-                            image: ImageUri,
-                        });
+                        const metadata = await pinata.upload.json(
+                            {
+                                name: tokenName,
+                                symbol: symbol,
+                                description: tokenDescription,
+                                image: ImageUri,
+                            },
+                            {
+                                metadata: {
+                                    name: tokenName,
+                                },
+                                pinType: "sync",
+                            }
+                        );
 
                         if (metadata) {
                             URI =
@@ -162,8 +165,6 @@ export const CreateView: FC = ({}) => {
                     );
                 }
 
-                // 移除 update 权限
-
                 const tx = await createAndMint(umi, {
                     mint,
                     name: tokenName,
@@ -174,6 +175,7 @@ export const CreateView: FC = ({}) => {
                     amount: quantity * 10 ** decimals,
                     tokenOwner: publicKey(owner),
                     tokenStandard: TokenStandard.Fungible,
+                    updateAuthority: null,
                 })
                     .add(ixs)
                     .sendAndConfirm(umi, {
@@ -182,6 +184,7 @@ export const CreateView: FC = ({}) => {
 
                 const signature = base58.deserialize(tx.signature)[0];
                 console.log(signature);
+
                 notify({
                     type: "success",
                     message: `Success!`,
