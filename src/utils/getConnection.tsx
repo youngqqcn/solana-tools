@@ -1,5 +1,5 @@
 import { Connection } from "@solana/web3.js";
-import { RPC_URL } from "config";
+// import { RPC_URL } from "config";
 
 export function getConnection(networkSelected: string) {
     let connection: Connection;
@@ -10,7 +10,7 @@ export function getConnection(networkSelected: string) {
         });
     } else {
         connection = new Connection(
-            RPC_URL,
+            process.env.NEXT_PUBLIC_HELIUS_RPC,
             { commitment: "confirmed" }
         );
     }
