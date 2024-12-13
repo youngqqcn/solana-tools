@@ -21,6 +21,7 @@ import { base58 } from "@metaplex-foundation/umi/serializers";
 import { AuthorityType, setAuthority } from "@metaplex-foundation/mpl-toolbox";
 import { getConnection } from "utils/getConnection";
 import { notify } from "utils/notifications";
+import { PinataSDK } from "pinata-web3";
 
 export const CreateView: FC = ({}) => {
     const wallet = useWallet();
@@ -55,33 +56,6 @@ export const CreateView: FC = ({}) => {
         setFile(_file);
         setFileName(_file.fileName);
     };
-
-    // const uploadMetadata= async () => (
-    //     metaplex: Metaplex,
-    //     nftData: NftData
-    // ): Promise<string> {
-    //     // 读取本地图片，转为 metaplex文件
-    //     const imgBuffer = fs.readFileSync("src/" + nftData.imageFile);
-    //     const imgFile = toMetaplexFile(imgBuffer, nftData.imageFile);
-    //     //  将图片上传ipfs
-    //     const imageUri = await metaplex.storage().upload(imgFile);
-    //     console.log("image uri: ", imageUri);
-
-    //     // 上传metadata数据
-    //     const output = await metaplex.nfts().uploadMetadata({
-    //         name: nftData.name,
-    //         symbol: nftData.symbol,
-    //         description: nftData.description,
-    //         sellerFeeBasisPoints: nftData.sellerFeeBasisPoints,
-    //         image: imageUri,
-    //     });
-
-    //     console.log("output:", output);
-
-    //     console.log("metadata uri: ", output.uri);
-    //     return output.uri;
-    // }
-
 
     const create = async () => {
         console.log("create");
@@ -123,36 +97,33 @@ export const CreateView: FC = ({}) => {
                 }
             } else {
                 if (file) {
-                    const [ImageUri] = await umi.uploader.upload([file]);
+                    const pinata = new PinataSDK({
+                        pinataJwt: process.env.NEXT_PUBLIC_PINATA_JWT,
+                        pinataGatewayKey:
+                            process.env.NEXT_PUBLIC_PINATE_GATEWAY_KEY,
+                        pinataGateway: process.env.NEXT_PUBLIC_PINATE_GATEWAY,
+                    });
+                    const upload = await pinata.upload.file(
+                        new File([file.buffer], file.fileName)
+                    );
 
-                    if (ImageUri) {
-                        const correctURI =
-                            networkSelected == "devnet"
-                                ? ImageUri.replace(
-                                      "https://arweave.net",
-                                      "https://devnet.irys.xyz"
-                                  )
-                                : ImageUri.replace(
-                                      "https://arweave.net",
-                                      "https://node1.irys.xyz"
-                                  );
-                        const uri = await umi.uploader.uploadJson({
+                    if (upload.IpfsHash) {
+                        const ImageUri =
+                            "https://gateway.pinata.cloud/ipfs/" +
+                            upload.IpfsHash.toString();
+
+                        const metadata = await pinata.upload.json({
                             name: tokenName,
                             symbol: symbol,
                             description: tokenDescription,
-                            image: correctURI,
+                            image: ImageUri,
                         });
-                        if (uri) {
+
+                        if (metadata) {
                             URI =
-                                networkSelected == "devnet"
-                                    ? uri.replace(
-                                          "https://arweave.net",
-                                          "https://devnet.irys.xyz"
-                                      )
-                                    : uri.replace(
-                                          "https://arweave.net",
-                                          "https://node1.irys.xyz"
-                                      );
+                                "https://gateway.pinata.cloud/ipfs/" +
+                                metadata.IpfsHash.toString();
+                            console.log("URI:", URI);
                         }
                     }
                 } else {
@@ -193,7 +164,6 @@ export const CreateView: FC = ({}) => {
 
                 // 移除 update 权限
 
-
                 const tx = await createAndMint(umi, {
                     mint,
                     name: tokenName,
@@ -218,6 +188,8 @@ export const CreateView: FC = ({}) => {
                     txid: signature,
                 });
                 setIscreating(false);
+            } else {
+                console.log("空URI");
             }
         } catch (error) {
             setIscreating(false);
